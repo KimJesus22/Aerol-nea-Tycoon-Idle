@@ -1,0 +1,9 @@
+<resources xmlns:tools="http://schemas.android.com/tools">
+    <!-- Tema base para la app (Material3) -->
+    <style name="Theme.AerolineaIdle" parent="Theme.Material3.DayNight.NoActionBar">
+        <!-- Opcional: colores del sistema -->
+        <item name="android:statusBarColor">@android:color/transparent</item>
+        <item name="android:navigationBarColor">@android:color/transparent</item>
+        <item name="android:windowLightStatusBar">false</item>
+    </style>
+</resources>
