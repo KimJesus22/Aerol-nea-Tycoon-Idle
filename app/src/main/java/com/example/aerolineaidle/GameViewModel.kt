@@ -2,7 +2,6 @@ package com.example.aerolineaidle
 
 import android.app.Application
 import android.content.Context
-import android.content.SharedPreferences
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import kotlinx.coroutines.Job
@@ -10,6 +9,10 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.*
 import kotlinx.coroutines.launch
 import kotlin.math.pow
+// Importar para el manejo de excepciones en DataStore, si se añade
+// import java.io.IOException
+// import androidx.datastore.core.CorruptionException
+// import android.util.Log
 
 // ======= MODELO DE JUEGO =======
 
@@ -19,7 +22,6 @@ data class GameState(
     val routes: Int = 0,
     val clickPower: Double = 1.0,      // Dinero por click
     val opsMultiplier: Double = 1.0,   // Multiplicador de ingresos pasivos
-    // lastSavedAt ya no es necesario aquí si el ViewModel maneja la persistencia.
 )
 
 // Costos base y progresión
@@ -34,62 +36,27 @@ private const val GROWTH = 1.15  // 15% más caro cada compra
 private const val BASE_RPS_PER_ROUTE = 2.0   // ingresos base por ruta por segundo
 private const val BASE_RPS_PER_PLANE = 5.0   // ingresos base por avión por segundo
 
-// Helper para SharedPreferences, movido aquí para cohesión
-private fun SharedPreferences.Editor.putDouble(key: String, value: Double) =
-    putLong(key, java.lang.Double.doubleToRawLongBits(value))
-
-private fun SharedPreferences.getDouble(key: String, def: Double): Double =
-    java.lang.Double.longBitsToDouble(getLong(key, java.lang.Double.doubleToRawLongBits(def)))
-
-
 class GameViewModel(application: Application) : ViewModel() {
 
     private val appContext: Context = application.applicationContext
 
-    // ======= STORAGE SENCILLO (SharedPreferences) =======
-    private object GameStorage { // Anidado o como dependencia
-        private const val PREFS = "airline_idle_prefs"
-        private const val K_MONEY = "money"
-        private const val K_PLANES = "planes"
-        private const val K_ROUTES = "routes"
-        private const val K_CLICK = "click"
-        private const val K_OPS = "ops"
-
-        fun load(ctx: Context): GameState {
-            val sp = ctx.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
-            return GameState(
-                money = sp.getDouble(K_MONEY, 0.0),
-                planes = sp.getInt(K_PLANES, 0),
-                routes = sp.getInt(K_ROUTES, 0),
-                clickPower = sp.getDouble(K_CLICK, 1.0),
-                opsMultiplier = sp.getDouble(K_OPS, 1.0)
-            )
-        }
-
-        fun save(ctx: Context, state: GameState) {
-            val sp = ctx.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
-            sp.edit()
-                .putDouble(K_MONEY, state.money)
-                .putInt(K_PLANES, state.planes)
-                .putInt(K_ROUTES, state.routes)
-                .putDouble(K_CLICK, state.clickPower)
-                .putDouble(K_OPS, state.opsMultiplier)
-                .apply()
-        }
-    }
-
-    private val _gameState = MutableStateFlow(GameStorage.load(appContext))
+    private val _gameState = MutableStateFlow(GameState()) 
     val gameState: StateFlow<GameState> = _gameState.asStateFlow()
 
     private var revenueTickerJob: Job? = null
-    private var autoSaveJob: Job? = null
 
     init {
+        viewModelScope.launch {
+            appContext.gameStateDataStore.data
+                // Aquí se podría añadir .catch para manejar IOException/CorruptionException
+                .collect { proto ->
+                    _gameState.value = proto.toGameState()
+                }
+        }
         startRevenueTicker()
-        startAutoSave()
     }
 
-    // ======= LÓGICA DE CÁLCULO =======
+    // ======= LÓGICA DE CÁLCULO (depende de _gameState.value, que es actualizado por DataStore) =======
     fun planeCost(): Double = BASE_PLANE_COST * GROWTH.pow(_gameState.value.planes)
     fun routeCost(): Double = BASE_ROUTE_COST * GROWTH.pow(_gameState.value.routes)
     fun clickUpgradeCost(): Double {
@@ -108,21 +75,27 @@ class GameViewModel(application: Application) : ViewModel() {
         return (fromRoutes + fromPlanes) * state.opsMultiplier
     }
 
-    // ======= ACCIONES DEL JUEGO =======
+    // ======= ACCIONES DEL JUEGO (actualizan DataStore) =======
     fun onManualClick() {
-        val currentMoney = _gameState.value.money
-        val clickPower = _gameState.value.clickPower
-        _gameState.update { it.copy(money = currentMoney + clickPower) }
+        viewModelScope.launch {
+            appContext.gameStateDataStore.updateData { proto ->
+                proto.toBuilder()
+                    .setMoney(proto.money + proto.clickPower) // proto.clickPower es el valor actual en DataStore
+                    .build()
+            }
+        }
     }
 
     fun buyPlane() {
         val cost = planeCost()
-        if (_gameState.value.money >= cost) {
-            _gameState.update {
-                it.copy(
-                    money = it.money - cost,
-                    planes = it.planes + 1
-                )
+        if (_gameState.value.money >= cost) { // Verifica con el estado actual de la UI
+            viewModelScope.launch {
+                appContext.gameStateDataStore.updateData { proto ->
+                    proto.toBuilder()
+                        .setMoney(proto.money - cost)
+                        .setPlanes(proto.planes + 1)
+                        .build()
+                }
             }
         }
     }
@@ -130,11 +103,13 @@ class GameViewModel(application: Application) : ViewModel() {
     fun buyRoute() {
         val cost = routeCost()
         if (_gameState.value.money >= cost) {
-            _gameState.update {
-                it.copy(
-                    money = it.money - cost,
-                    routes = it.routes + 1
-                )
+            viewModelScope.launch {
+                appContext.gameStateDataStore.updateData { proto ->
+                    proto.toBuilder()
+                        .setMoney(proto.money - cost)
+                        .setRoutes(proto.routes + 1)
+                        .build()
+                }
             }
         }
     }
@@ -142,11 +117,13 @@ class GameViewModel(application: Application) : ViewModel() {
     fun upgradeClickPower() {
         val cost = clickUpgradeCost()
         if (_gameState.value.money >= cost) {
-            _gameState.update {
-                it.copy(
-                    money = it.money - cost,
-                    clickPower = (it.clickPower + 1.0).coerceAtMost(50.0)
-                )
+            viewModelScope.launch {
+                appContext.gameStateDataStore.updateData { proto ->
+                    proto.toBuilder()
+                        .setMoney(proto.money - cost)
+                        .setClickPower((proto.clickPower + 1.0).coerceAtMost(50.0))
+                        .build()
+                }
             }
         }
     }
@@ -154,53 +131,62 @@ class GameViewModel(application: Application) : ViewModel() {
     fun upgradeOpsMultiplier() {
         val cost = opsUpgradeCost()
         if (_gameState.value.money >= cost) {
-            _gameState.update {
-                it.copy(
-                    money = it.money - cost,
-                    opsMultiplier = (it.opsMultiplier + 0.1).coerceAtMost(10.0) // Cuidado con la precisión de Double
-                )
+            viewModelScope.launch {
+                appContext.gameStateDataStore.updateData { proto ->
+                    proto.toBuilder()
+                        .setMoney(proto.money - cost)
+                        .setOpsMultiplier((proto.opsMultiplier + 0.1).coerceAtMost(10.0))
+                        .build()
+                }
             }
         }
     }
     
     fun resetGame() {
-        _gameState.value = GameState() // Restablece al estado inicial
-        // El auto-guardado se encargará de persistir esto.
+        viewModelScope.launch {
+            appContext.gameStateDataStore.updateData {
+                GameState().toProto() // Usa GameState() por defecto y lo convierte a Proto
+            }
+        }
     }
 
     // ======= TICKERS INTERNOS =======
     private fun startRevenueTicker() {
-        revenueTickerJob?.cancel() // Cancela el job anterior si existe
+        revenueTickerJob?.cancel()
         revenueTickerJob = viewModelScope.launch {
             while (true) {
                 delay(1000)
-                val rps = revenuePerSecond()
-                if (rps > 0) { // Solo actualiza si hay ingresos para evitar escrituras innecesarias
-                    _gameState.update { it.copy(money = it.money + rps) }
+                val rps = revenuePerSecond() // Calcula RPS basado en el estado actual de la UI
+                if (rps > 0) {
+                    appContext.gameStateDataStore.updateData { proto ->
+                        proto.toBuilder()
+                            .setMoney(proto.money + rps)
+                            .build()
+                    }
                 }
             }
         }
     }
 
-    private fun startAutoSave() {
-        autoSaveJob?.cancel()
-        autoSaveJob = viewModelScope.launch {
-            // Recolecta cambios en gameState, espera 5s de inactividad, luego guarda.
-            // O una versión más simple que guarda cada 5s independientemente.
-            // Para simplicidad, y replicar el comportamiento original:
-            while(true) {
-                delay(5000) // Espera 5 segundos
-                GameStorage.save(appContext, _gameState.value)
-            }
-        }
-    }
+    // ======= FUNCIONES DE CONVERSIÓN PROTOBUF =======
+    private fun GameStateProto.toGameState() = GameState(
+        money = money,
+        planes = planes,
+        routes = routes,
+        clickPower = clickPower,
+        opsMultiplier = opsMultiplier
+    )
+
+    private fun GameState.toProto(): GameStateProto = GameStateProto.newBuilder()
+        .setMoney(money)
+        .setPlanes(planes)
+        .setRoutes(routes)
+        .setClickPower(clickPower)
+        .setOpsMultiplier(opsMultiplier)
+        .build()
 
     override fun onCleared() {
         super.onCleared()
         revenueTickerJob?.cancel()
-        autoSaveJob?.cancel()
-        // Opcionalmente, podrías querer hacer un último guardado aquí
-        // GameStorage.save(appContext, _gameState.value)
-        // pero el auto-guardado periódico debería ser suficiente.
     }
 }
