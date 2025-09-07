@@ -16,7 +16,7 @@ import kotlin.math.pow
 
 // ======= MODELO DE JUEGO =======
 
-data class GameState(
+data class GameStateModel(
     val money: Double = 0.0,
     val planes: Int = 0,
     val routes: Int = 0,
@@ -40,8 +40,8 @@ class GameViewModel(application: Application) : ViewModel() {
 
     private val appContext: Context = application.applicationContext
 
-    private val _gameState = MutableStateFlow(GameState()) 
-    val gameState: StateFlow<GameState> = _gameState.asStateFlow()
+    private val _gameState = MutableStateFlow(GameStateModel())
+    val gameState: StateFlow<GameStateModel> = _gameState.asStateFlow()
 
     private var revenueTickerJob: Job? = null
 
@@ -50,7 +50,7 @@ class GameViewModel(application: Application) : ViewModel() {
             appContext.gameStateDataStore.data
                 // Aquí se podría añadir .catch para manejar IOException/CorruptionException
                 .collect { proto ->
-                    _gameState.value = proto.toGameState()
+                    _gameState.value = proto.toGameStateModel()
                 }
         }
         startRevenueTicker()
@@ -145,7 +145,7 @@ class GameViewModel(application: Application) : ViewModel() {
     fun resetGame() {
         viewModelScope.launch {
             appContext.gameStateDataStore.updateData {
-                GameState().toProto() // Usa GameState() por defecto y lo convierte a Proto
+                GameStateModel().toProto() // Usa GameStateModel() por defecto y lo convierte a Proto
             }
         }
     }
@@ -169,7 +169,7 @@ class GameViewModel(application: Application) : ViewModel() {
     }
 
     // ======= FUNCIONES DE CONVERSIÓN PROTOBUF =======
-    private fun GameStateProto.toGameState() = GameState(
+    private fun GameStateProto.toGameStateModel() = GameStateModel(
         money = money,
         planes = planes,
         routes = routes,
@@ -177,7 +177,7 @@ class GameViewModel(application: Application) : ViewModel() {
         opsMultiplier = opsMultiplier
     )
 
-    private fun GameState.toProto(): GameStateProto = GameStateProto.newBuilder()
+    private fun GameStateModel.toProto(): GameStateProto = GameStateProto.newBuilder()
         .setMoney(money)
         .setPlanes(planes)
         .setRoutes(routes)

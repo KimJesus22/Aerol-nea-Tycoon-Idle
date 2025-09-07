@@ -17,7 +17,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 
-// La clase GameState, constantes, funciones de cálculo y GameStorage
+// La clase GameStateModel, constantes, funciones de cálculo y GameStorage
 // han sido movidos a GameViewModel.kt
 
 // ======= ACTIVIDAD PRINCIPAL + UI =======
@@ -42,7 +42,7 @@ class MainActivity : ComponentActivity() {
 }
 
 @Composable
-fun AirlineIdleApp(gameState: GameState, viewModel: GameViewModel) {
+fun AirlineIdleApp(gameState: GameStateModel, viewModel: GameViewModel) {
     // Los LaunchedEffect para el ticker de ingresos y el auto-guardado
     // ya no son necesarios aquí, el ViewModel los maneja.
 
@@ -101,7 +101,7 @@ fun AirlineIdleApp(gameState: GameState, viewModel: GameViewModel) {
 }
 
 @Composable
-fun ShopSection(gameState: GameState, viewModel: GameViewModel) {
+fun ShopSection(gameState: GameStateModel, viewModel: GameViewModel) {
     Column(Modifier.fillMaxWidth()) {
         Text("Tienda", style = MaterialTheme.typography.titleMedium)
         Spacer(Modifier.height(8.dp))

@@ -54,8 +54,17 @@ kotlin {
 
 protobuf {
     protoc {
-        // versión del compilador protoc
+        // Versión del compilador protoc que ya tenías configurada
         artifact = "com.google.protobuf:protoc:3.25.1"
     }
-    // El bloque generateProtoTasks ha sido eliminado para usar la generación por defecto.
+    generateProtoTasks {
+        all().forEach { task: GenerateProtoTask ->
+            task.builtins {
+                // Registra la salida 'java' y añade la opción 'lite' si usas protobuf-javalite
+                create("java") {
+                    option("lite")
+                }
+            }
+        }
+    }
 }
