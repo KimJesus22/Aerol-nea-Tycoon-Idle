@@ -1,0 +1,12 @@
+syntax = "proto3";
+
+option java_package = "com.example.aerolineaidle";
+option java_multiple_files = true;
+
+// Ejemplo de estructura que guardarás con DataStore
+message GameStateProto {
+  int64 money       = 1;
+  int32 planes      = 2;
+  int32 routes      = 3;
+  // añade más campos según necesites
+}
