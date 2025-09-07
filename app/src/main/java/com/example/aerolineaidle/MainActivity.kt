@@ -1,10 +1,9 @@
 package com.example.aerolineaidle
 
-import android.content.Context
-import android.content.SharedPreferences
 import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
+import androidx.activity.viewModels
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
@@ -16,121 +15,36 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import kotlinx.coroutines.delay
-import kotlin.math.pow
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 
-// ======= MODELO DE JUEGO =======
-
-data class GameState(
-    val money: Double = 0.0,
-    val planes: Int = 0,
-    val routes: Int = 0,
-    val clickPower: Double = 1.0,      // Dinero por click
-    val opsMultiplier: Double = 1.0,   // Multiplicador de ingresos pasivos
-    val lastSavedAt: Long = 0L
-)
-
-// Costos base y progresión
-private const val BASE_PLANE_COST = 100.0
-private const val BASE_ROUTE_COST = 50.0
-private const val BASE_CLICK_UPGRADE_COST = 200.0
-private const val BASE_OPS_UPGRADE_COST = 300.0
-
-private const val GROWTH = 1.15  // 15% más caro cada compra
-
-// Producción
-private const val BASE_RPS_PER_ROUTE = 2.0   // ingresos base por ruta por segundo
-private const val BASE_RPS_PER_PLANE = 5.0   // ingresos base por avión por segundo
-
-fun planeCost(nOwned: Int): Double = BASE_PLANE_COST * GROWTH.pow(nOwned)
-fun routeCost(nOwned: Int): Double = BASE_ROUTE_COST * GROWTH.pow(nOwned)
-fun clickUpgradeCost(power: Double): Double {
-    val level = (power - 1.0).coerceAtLeast(0.0)
-    return BASE_CLICK_UPGRADE_COST * 1.25.pow(level)
-}
-fun opsUpgradeCost(mult: Double): Double {
-    val level = (mult - 1.0).coerceAtLeast(0.0)
-    return BASE_OPS_UPGRADE_COST * 1.35.pow(level)
-}
-
-fun revenuePerSecond(state: GameState): Double {
-    val fromRoutes = state.routes * BASE_RPS_PER_ROUTE
-    val fromPlanes = state.planes * BASE_RPS_PER_PLANE
-    return (fromRoutes + fromPlanes) * state.opsMultiplier
-}
-
-// ======= STORAGE SENCILLO (SharedPreferences) =======
-
-private const val PREFS = "airline_idle_prefs"
-private const val K_MONEY = "money"
-private const val K_PLANES = "planes"
-private const val K_ROUTES = "routes"
-private const val K_CLICK = "click"
-private const val K_OPS = "ops"
-
-object GameStorage {
-    fun load(ctx: Context): GameState {
-        val sp = ctx.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
-        return GameState(
-            money = sp.getDouble(K_MONEY, 0.0),
-            planes = sp.getInt(K_PLANES, 0),
-            routes = sp.getInt(K_ROUTES, 0),
-            clickPower = sp.getDouble(K_CLICK, 1.0),
-            opsMultiplier = sp.getDouble(K_OPS, 1.0),
-            lastSavedAt = System.currentTimeMillis()
-        )
-    }
-
-    fun save(ctx: Context, state: GameState) {
-        val sp = ctx.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
-        sp.edit()
-            .putDouble(K_MONEY, state.money)
-            .putInt(K_PLANES, state.planes)
-            .putInt(K_ROUTES, state.routes)
-            .putDouble(K_CLICK, state.clickPower)
-            .putDouble(K_OPS, state.opsMultiplier)
-            .apply()
-    }
-}
-
-private fun SharedPreferences.Editor.putDouble(key: String, value: Double) =
-    putLong(key, java.lang.Double.doubleToRawLongBits(value))
-
-private fun SharedPreferences.getDouble(key: String, def: Double): Double =
-    java.lang.Double.longBitsToDouble(getLong(key, java.lang.Double.doubleToRawLongBits(def)))
+// La clase GameState, constantes, funciones de cálculo y GameStorage
+// han sido movidos a GameViewModel.kt
 
 // ======= ACTIVIDAD PRINCIPAL + UI =======
 
 class MainActivity : ComponentActivity() {
+    // Obtener instancia del ViewModel
+    private val gameViewModel: GameViewModel by viewModels()
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        val initial = GameStorage.load(this)
         setContent {
             MaterialTheme {
-                AirlineIdleApp(initial, appContext = this)
+                // Observar el gameState del ViewModel
+                val gameState by gameViewModel.gameState.collectAsStateWithLifecycle()
+                AirlineIdleApp(
+                    gameState = gameState,
+                    viewModel = gameViewModel
+                )
             }
         }
     }
 }
 
 @Composable
-fun AirlineIdleApp(initial: GameState, appContext: Context) {
-    var state by remember { mutableStateOf(initial) }
-
-    // Ticker: suma ingresos cada segundo
-    LaunchedEffect(Unit) {
-        while (true) {
-            delay(1000)
-            val rps = revenuePerSecond(state)
-            state = state.copy(money = state.money + rps)
-        }
-    }
-
-    // Auto-guardado cada 5 s (debounce)
-    LaunchedEffect(state) {
-        delay(5000)
-        GameStorage.save(appContext, state.copy(lastSavedAt = System.currentTimeMillis()))
-    }
+fun AirlineIdleApp(gameState: GameState, viewModel: GameViewModel) {
+    // Los LaunchedEffect para el ticker de ingresos y el auto-guardado
+    // ya no son necesarios aquí, el ViewModel los maneja.
 
     Surface(Modifier.fillMaxSize()) {
         Column(
@@ -148,11 +62,11 @@ fun AirlineIdleApp(initial: GameState, appContext: Context) {
             )
             Spacer(Modifier.height(8.dp))
 
-            val rps = revenuePerSecond(state)
+            val rps = viewModel.revenuePerSecond() // Usar método del ViewModel
             Card(Modifier.fillMaxWidth()) {
                 Column(Modifier.padding(16.dp)) {
                     Text(
-                        text = "Dinero: ${formatMoney(state.money)}",
+                        text = "Dinero: ${formatMoney(gameState.money)}",
                         style = MaterialTheme.typography.titleLarge
                     )
                     Text(text = "Ingresos/seg: ${formatMoney(rps)}")
@@ -162,19 +76,18 @@ fun AirlineIdleApp(initial: GameState, appContext: Context) {
             Spacer(Modifier.height(16.dp))
 
             Button(
-                onClick = { state = state.copy(money = state.money + state.clickPower) },
+                onClick = { viewModel.onManualClick() }, // Usar método del ViewModel
                 modifier = Modifier.fillMaxWidth()
-            ) { Text("Despegar (+${formatMoney(state.clickPower)})") }
+            ) { Text("Despegar (+${formatMoney(gameState.clickPower)})") }
 
             Spacer(Modifier.height(16.dp))
 
-            ShopSection(state = state) { newState -> state = newState }
+            ShopSection(gameState = gameState, viewModel = viewModel)
 
             Spacer(Modifier.height(24.dp))
 
             TextButton(onClick = {
-                state = GameState()
-                GameStorage.save(appContext, state)
+                viewModel.resetGame() // Usar método del ViewModel
             }) { Text("Reiniciar progreso") }
 
             Spacer(Modifier.height(12.dp))
@@ -188,77 +101,62 @@ fun AirlineIdleApp(initial: GameState, appContext: Context) {
 }
 
 @Composable
-fun ShopSection(state: GameState, onBuy: (GameState) -> Unit) {
+fun ShopSection(gameState: GameState, viewModel: GameViewModel) {
     Column(Modifier.fillMaxWidth()) {
         Text("Tienda", style = MaterialTheme.typography.titleMedium)
         Spacer(Modifier.height(8.dp))
 
         // Comprar Ruta
-        val costRoute = routeCost(state.routes)
+        val costRoute = viewModel.routeCost() // Usar método del ViewModel
         ShopItem(
             title = "Nueva Ruta",
-            desc = "+${formatMoney(BASE_RPS_PER_ROUTE)} RPS",
+            // Las constantes como BASE_RPS_PER_ROUTE deben estar en ViewModel si se necesitan dinámicamente,
+            // o ser valores fijos si la descripción no cambia.
+            // Para este ejemplo, asumimos que el ViewModel podría exponer estas constantes si fuera necesario,
+            // o la UI usa valores estáticos que conoce.
+            // Por simplicidad, si BASE_RPS_PER_ROUTE (2.0) es fijo para la UI:
+            desc = "+${formatMoney(2.0)} RPS", // Ajustar si es necesario
             cost = costRoute,
-            owned = state.routes,
-            canBuy = state.money >= costRoute
+            owned = gameState.routes,
+            canBuy = gameState.money >= costRoute
         ) {
-            if (state.money >= costRoute) {
-                onBuy(state.copy(
-                    money = state.money - costRoute,
-                    routes = state.routes + 1
-                ))
-            }
+            viewModel.buyRoute() // Usar método del ViewModel
         }
 
         // Comprar Avión
-        val costPlane = planeCost(state.planes)
+        val costPlane = viewModel.planeCost() // Usar método del ViewModel
         ShopItem(
             title = "Nuevo Avión",
-            desc = "+${formatMoney(BASE_RPS_PER_PLANE)} RPS",
+            desc = "+${formatMoney(5.0)} RPS", // Ajustar si es necesario (BASE_RPS_PER_PLANE)
             cost = costPlane,
-            owned = state.planes,
-            canBuy = state.money >= costPlane
+            owned = gameState.planes,
+            canBuy = gameState.money >= costPlane
         ) {
-            if (state.money >= costPlane) {
-                onBuy(state.copy(
-                    money = state.money - costPlane,
-                    planes = state.planes + 1
-                ))
-            }
+            viewModel.buyPlane() // Usar método del ViewModel
         }
 
         // Mejora: Click Power
-        val costClick = clickUpgradeCost(state.clickPower)
+        val costClick = viewModel.clickUpgradeCost() // Usar método del ViewModel
         ShopItem(
             title = "Mejora de Despegue",
             desc = "Aumenta dinero por click",
             cost = costClick,
-            owned = state.clickPower.toInt(),
-            canBuy = state.money >= costClick
+            owned = gameState.clickPower.toInt(), // El nivel se podría calcular en ViewModel también
+            canBuy = gameState.money >= costClick
         ) {
-            if (state.money >= costClick) {
-                onBuy(state.copy(
-                    money = state.money - costClick,
-                    clickPower = (state.clickPower + 1.0).coerceAtMost(50.0)
-                ))
-            }
+            viewModel.upgradeClickPower() // Usar método del ViewModel
         }
 
         // Mejora: Operaciones (multiplicador)
-        val costOps = opsUpgradeCost(state.opsMultiplier)
+        val costOps = viewModel.opsUpgradeCost() // Usar método del ViewModel
         ShopItem(
             title = "Mejora de Operaciones",
             desc = "Multiplica ingresos pasivos",
             cost = costOps,
-            owned = (state.opsMultiplier * 10).toInt(),
-            canBuy = state.money >= costOps
+            owned = (gameState.opsMultiplier * 10).toInt(), // El nivel se podría calcular en ViewModel
+            canBuy = gameState.money >= costOps
         ) {
-            if (state.money >= costOps) {
-                onBuy(state.copy(
-                    money = state.money - costOps,
-                    opsMultiplier = (state.opsMultiplier + 0.1).coerceAtMost(10.0)
-                ))
-            }
+            viewModel.upgradeOpsMultiplier() // Usar método del ViewModel
         }
     }
 }
