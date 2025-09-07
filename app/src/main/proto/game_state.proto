@@ -1,12 +1,20 @@
 syntax = "proto3";
 
+// Indica a protoc en qué paquete generar las clases
 option java_package = "com.example.aerolineaidle";
+// Genera un archivo .java por cada mensaje (recomendado por la documentación de DataStore)
 option java_multiple_files = true;
 
-// Ejemplo de estructura que guardarás con DataStore
+// Representa el estado del juego. Usa snake_case para los nombres de campo.
 message GameStateProto {
-  int64 money       = 1;
-  int32 planes      = 2;
-  int32 routes      = 3;
-  // añade más campos según necesites
+  // dinero total; utiliza double porque en tu modelo es Double
+  double money = 1;
+  // número de aviones
+  int32 planes = 2;
+  // número de rutas
+  int32 routes = 3;
+  // poder de clic (dinero por clic)
+  double click_power = 4;
+  // multiplicador de ingresos pasivos
+  double ops_multiplier = 5;
 }
