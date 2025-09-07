@@ -1,3 +1,8 @@
+import com.google.protobuf.gradle.GenerateProtoTask
+import com.google.protobuf.gradle.ProtobufExtension // Aunque no se use directamente con la nueva sintaxis, puede ser útil para otras configuraciones
+import com.google.protobuf.gradle.*
+
+
 plugins {
     id("com.android.application")
     id("org.jetbrains.kotlin.android")
@@ -39,7 +44,7 @@ dependencies {
 
     // === DataStore con Proto ===
     // biblioteca de DataStore para objetos tipados (Proto)
-    implementation("androidx.datastore:datastore:1.1.7")       // última versión estable:contentReference[oaicite:1]{index=1}
+    implementation("androidx.datastore:datastore:1.1.7")
     // versión lite de las clases Java generadas por protoc
     implementation("com.google.protobuf:protobuf-javalite:3.25.1")
 }
@@ -50,26 +55,17 @@ kotlin {
 
 protobuf {
     protoc {
-        // versión del compilador protoc usada para generar código
+        // versión del compilador protoc
         artifact = "com.google.protobuf:protoc:3.25.1"
     }
     generateProtoTasks {
-        all().forEach { task ->
+        all().forEach { task: GenerateProtoTask ->
             task.builtins {
-                // generar código Java con la opción 'lite'
-                java {
+                // usa “java” y añade la opción "lite" para Protobuf lite
+                named("java") {
                     option("lite")
                 }
             }
-        }
-    }
-}
-
-// Opcionalmente especifica dónde están tus archivos .proto
-sourceSets {
-    named("main") {
-        proto {
-            srcDir("src/main/proto")
         }
     }
 }
